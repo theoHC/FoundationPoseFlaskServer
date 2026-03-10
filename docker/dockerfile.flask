@@ -1,0 +1,8 @@
+FROM shingarey/foundationpose_custom_cuda121:latest
+
+# Expose ports (documentation + for tooling)
+EXPOSE 4242 4422
+
+# Helpful Flask defaults (you can override at runtime)
+ENV FLASK_RUN_HOST=0.0.0.0
+ENV FLASK_RUN_PORT=4242
