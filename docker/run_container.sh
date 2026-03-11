@@ -1,3 +1,3 @@
-docker rm -f foundationpose
+docker rm -f /foundationpose_flask
 DIR=$(pwd)/../
-xhost +  && docker run --gpus all --env NVIDIA_DISABLE_REQUIRE=1 -it --network=host --name foundationpose  --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v $DIR:$DIR -v /home:/home -v /mnt:/mnt -v /tmp/.X11-unix:/tmp/.X11-unix -v /tmp:/tmp  --ipc=host -e DISPLAY=${DISPLAY} -e GIT_INDEX_FILE foundationpose:latest bash -c "cd $DIR && bash"
+docker run --gpus all --env NVIDIA_DISABLE_REQUIRE=1 -it -p 4242:4242 --name foundationpose_flask --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v $DIR:$DIR -v /home:/home -v /mnt:/mnt -v /tmp:/tmp  --ipc=host  -e GIT_INDEX_FILE foundationpose_flask bash -c "unset DISPLAY && cd $DIR && bash"
