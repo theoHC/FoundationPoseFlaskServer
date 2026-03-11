@@ -64,12 +64,10 @@ class FoundationPoseService:
         logging.info("estimator initialization done")
 
         self.pose = None
-
-        self.last_call_time = None
         
         pass
 
-    def estimate_pose(self, color, depth, K, mask=None):
+    def estimate_pose(self, color, depth, K, mask=None, rescore=False):
         """
         color: HxWx3 uint8 (OpenCV RGB)
         depth: HxW (uint16 mm or float32 meters)
@@ -78,44 +76,30 @@ class FoundationPoseService:
         mask: HxW bool optional
         depth_scale: if depth is uint16 in mm -> meters scale=0.001
         """
-
-        now = time.time()
-        
-        reregister = False
-
-        if self.last_call_time is None:
-            reregister = True
-        elif now - self.last_call_time > 2.0:
-            print("TIMEOUT-BASED REREGISTER")
-            reregister = True
-
-        if (self.pose is None or reregister) and mask is not None:
+        score = -1.0
+        if self.pose is None and mask is not None:
             self.pose = self.est.register(K=K, rgb=color, depth=depth, ob_mask=mask, iteration=2)
+            score = self.est.scores[0]
         else:
             if self.est.pose_last is None:
-                return None
+                return None, 0.0
             self.pose = self.est.track_one(rgb=color, depth=depth, K=K, iteration=2)
 
-        self.last_call_time = time.time()
+            if rescore:
+                score = self.score_current_pose(color, depth, K)
 
-        return self.pose
+        return self.pose, score
     
     def score_current_pose(self, rgb, depth, K):
         """
         Runs the FoundationPose score network on the current pose (tracking case).
         Returns a python float.
         """
-        import torch  # estimater.py uses torch; safe to import here
-
-        # scorer expects depth processed similarly to estimater.py
-        depth_t = torch.as_tensor(depth, device="cuda", dtype=torch.float)
-        depth_t = erode_depth(depth_t, radius=2, device="cuda")
-        depth_t = bilateral_filter_depth(depth_t, radius=2, device="cuda")
 
         scores, _vis = self.est.scorer.predict(
             mesh=self.est.mesh,
             rgb=rgb,
-            depth=depth_t,
+            depth=depth,
             K=K,
             ob_in_cams=self.est.pose_last.reshape(1, 4, 4).data.cpu().numpy(),
             normal_map=None,
@@ -125,11 +109,7 @@ class FoundationPoseService:
             get_vis=False,
         )
 
-        # scores is typically a torch tensor or numpy array of shape (N,)
-        try:
-            return float(scores[0].item())
-        except Exception:
-            return float(scores[0])
+        return float(scores[0].item())
 
 service = FoundationPoseService()
 print("Initialization Complete - FoundationPose Online!")
@@ -183,15 +163,20 @@ def pose():
             mask_img = mask_img[..., 0]
         mask = mask_img > 0
 
+    rescore = False
+    if "rescore" in request.form:
+        rescore_str = request.form["rescore"].lower()
+        rescore = rescore_str in ("true", "1", "yes")
+
     try:
-        pose = service.estimate_pose(rgb, depth, K, mask=mask)
+        pose, score = service.estimate_pose(rgb, depth, K, mask=mask, rescore=rescore)
     except Exception as e:
         print(f"estimation error {e}")
         print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
     if pose is not None:
-        return jsonify({"pose": pose.tolist()})
+        return jsonify({"pose": pose.tolist(), "score": score})
     else:
         print("Error with pose estimation - no pose returned")
         return jsonify({"error": "Error with pose estimation - no pose returned"}), 500
