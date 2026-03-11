@@ -88,7 +88,7 @@ class FoundationPoseService:
             if rescore:
                 score = self.score_current_pose(color, depth, K)
 
-        return self.pose, score
+        return self.pose, float(score)
     
     def score_current_pose(self, rgb, depth, K):
         """
